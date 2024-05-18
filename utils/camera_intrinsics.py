@@ -52,3 +52,30 @@ class NYU_Intrinsics(CameraIntrinsics):
             principal_point_x=principal_point_x,
             principal_point_y=principal_point_y,
         )
+
+
+class Manydepth_Intrinsics(CameraIntrinsics):
+    def __init__(self):
+        focal_point_x = 0.58
+        focal_point_y = 1.92
+        principal_point_x = 0.5
+        principal_point_y = 0.5
+        super().__init__(
+            focal_point_x=focal_point_x,
+            focal_point_y=focal_point_y,
+            principal_point_x=principal_point_x,
+            principal_point_y=principal_point_y,
+        )
+
+class TFTN_dataset_intrinsics(CameraIntrinsics):
+    def __init__(self):
+        focal_point_x = 1400 / 640
+        focal_point_y = 1380 / 480
+        principal_point_x = 350 / 640
+        principal_point_y = 200 / 480
+        super().__init__(
+            focal_point_x=focal_point_x,
+            focal_point_y=focal_point_y,
+            principal_point_x=principal_point_x,
+            principal_point_y=principal_point_y,
+        )

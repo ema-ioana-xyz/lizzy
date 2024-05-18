@@ -16,6 +16,8 @@ class TFTN_module(L.LightningModule):
         self.intrinsics_derived_grid = camera_intrinsics.make_grid(input_shape).cuda()
 
     def forward(self, depth: Tensor):
+        depth = depth.cuda()
+
         # Sobel filters for the first derivatives
         kernel_x = torch.tensor(
             [
@@ -29,7 +31,7 @@ class TFTN_module(L.LightningModule):
         kernel_x = e.rearrange(kernel_x, "h w -> 1 1 h w")
 
         kernel_y = e.rearrange(kernel_x, "1 1 h w -> 1 1 w h")
-        depth = e.rearrange(depth, "1 h w -> 1 1 h w")
+        depth = e.rearrange(depth, "h w -> 1 1 h w")
         FOCAL_POINT_X = self.camera_intrinsics.focal_point_x
         FOCAL_POINT_Y = self.camera_intrinsics.focal_point_y
 
@@ -80,7 +82,7 @@ class TFTN_module(L.LightningModule):
         # Handle NaN values
         normals_x = torch.nan_to_num(normals_x, nan=0)
         normals_y = torch.nan_to_num(normals_y, nan=0)
-        normals_y = torch.nan_to_num(normals_y, nan=-1)
+        normals_z = torch.nan_to_num(normals_z, nan=-1)
 
         normals = torch.stack([normals_x, normals_y, normals_z])
         normals = e.rearrange(normals, "c h w -> h w c")
