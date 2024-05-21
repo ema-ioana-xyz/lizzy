@@ -42,10 +42,10 @@ class CameraIntrinsics:
 
 class NYU_Intrinsics(CameraIntrinsics):
     def __init__(self):
-        focal_point_x = 5.8262448167737955e02
-        focal_point_y = 5.8269103270988637e02
-        principal_point_x = 3.1304475870804731e02
-        principal_point_y = 2.3844389626620386e02
+        focal_point_x = 5.8262448167737955e02 / 640
+        focal_point_y = 5.8269103270988637e02 / 480
+        principal_point_x = 3.1304475870804731e02 / 640
+        principal_point_y = 2.3844389626620386e02 / 480
         super().__init__(
             focal_point_x=focal_point_x,
             focal_point_y=focal_point_y,

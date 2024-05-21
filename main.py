@@ -74,9 +74,19 @@ def visualize_normals(normals) -> None:
     # fig, axs = plt.subplots(nrows=3, ncols=1)
     # for axis in range(3):
         # plt.sca(axs[axis])
+        # axs[axis].set_aspect("equal")
         # img = plt.imshow(normals[..., axis], cmap=cmap, vmin=-1, vmax=1)
         # plt.colorbar(img)
     plt.imshow(normals)
+
+
+def load_nyu_depth(file_path: Path):
+    # Load
+    depth = loadmat(file_path)["depth"]
+    depth = torch.from_numpy(depth)
+    depth = e.rearrange(depth, "h w -> h w")
+
+    return depth
 
 
 
@@ -101,15 +111,10 @@ nyu_shape = ImageShape(height=481, width=641, channels=3)
 img_shape = ImageShape(height=375, width=1242, channels=3)
 tftn_shape = ImageShape(height=480, width=640, channels=3)
 
-nyu_unscaled_intrinsics = NYU_Intrinsics()
-nyu_unscaled_intrinsics.focal_point_x /= nyu_shape.width
-nyu_unscaled_intrinsics.focal_point_y /= nyu_shape.height
-nyu_unscaled_intrinsics.principal_point_x /= nyu_shape.width
-nyu_unscaled_intrinsics.principal_point_y /= nyu_shape.height
 # manydepth = Manydepth_module(
     # Manydepth_Intrinsics(), Path("./manydepth_weights_KITTI_MR")
 # )
-TFTN = TFTN_module(camera_intrinsics=TFTN_dataset_intrinsics(), input_shape=tftn_shape)
+TFTN = TFTN_module(camera_intrinsics=NYU_Intrinsics(), input_shape=nyu_shape)
 
 
 def predict_from_matfile(model: str, file_path: str):
@@ -161,7 +166,8 @@ demo = gr.Interface(
 
 # image_src = load_rgb_image(Path("0000000026.png"))
 # image_tgt = load_rgb_image(Path("0000000026.png"))
-depth_data = load_tftn_depth(Path("torus_tftn.bin"))
+# depth_data = load_tftn_depth(Path("torus_tftn.bin"))
+depth_data = load_nyu_depth(Path("office_kitchen_0003_r-1315419135.670169-693301627.mat"))
 
 with torch.no_grad():
     # depth_pred = manydepth(image_tgt, image_src)

@@ -65,32 +65,11 @@ class TFTN_module(L.LightningModule):
                 points_3d[..., 0], points_3d[..., 1], points_3d[..., 2], position + 1
             )
 
-            normals_z_volume[..., position] = -(normals_x * x_delta + normals_y * y_delta) / z_delta
+            normals_z_volume[..., position] = (
+                -(normals_x * x_delta + normals_y * y_delta) / z_delta
+            )
 
         normals_z = torch.nanmedian(normals_z_volume, dim=-1).values
-
-        # I'm deviating from the paper by using x, y, z instdead of the delta values
-        # (where you subtract the current point's values from the neighbors' values)
-        # x_part = FOCAL_POINT_X * directional_derivative_x * points_3d[..., 0]
-        # y_part = FOCAL_POINT_Y * directional_derivative_y * points_3d[..., 1]
-        # points_3d = e.rearrange(points_3d, "h w c -> 1 c h w")
-        # patches = unfold(points_3d, kernel_size=3, padding=1)
-        # patches = patches.unflatten(1, [3, 3**2])
-        # patches = patches.unflatten(
-        # 3, [self.input_shape.height, self.input_shape.width]
-        # )
-        # patches is 1 batch X 3 channels X kern_size^2 X height X width
-        # patches = e.rearrange(patches, "1 c k h w -> c k h w")
-
-        # Subtract the middle part of each patch
-        # deltas = patches - e.rearrange(points_3d, "1 c h w -> c 1 h w")
-
-        # x_part = deltas[0, ...] * e.rearrange(normals_x, "h w -> 1 h w")
-        # y_part = deltas[1, ...] * e.rearrange(normals_y, "h w -> 1 h w")
-        # D_plane_shift_constant = -1
-        # normals_z = D_plane_shift_constant * (x_part + y_part) / deltas[2, ...]
-        # normals_z = torch.nan_to_num(normals_z)
-        # normals_z = torch.mean(normals_z, dim=0)
 
         # Handle NaN values
         normals_x = torch.nan_to_num(normals_x, nan=0)
@@ -127,7 +106,12 @@ class TFTN_module(L.LightningModule):
         else:
             kernel = [[0, 0, 0], [0, 1, 0], [0, 0, -1]]
 
-        kernel = torch.tensor(kernel, device="cuda", dtype=torch.float).fliplr().unsqueeze(0).unsqueeze(0)
+        kernel = (
+            torch.tensor(kernel, device="cuda", dtype=torch.float)
+            .fliplr()
+            .unsqueeze(0)
+            .unsqueeze(0)
+        )
         X_d = torch.conv2d(X, kernel, padding="same")
         Y_d = torch.conv2d(Y, kernel, padding="same")
         Z_d = torch.conv2d(Z, kernel, padding="same")
