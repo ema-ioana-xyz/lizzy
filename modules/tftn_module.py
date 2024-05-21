@@ -28,9 +28,9 @@ class TFTN_module(L.LightningModule):
             device="cuda",
             dtype=torch.float,
         )
-        kernel_x = e.rearrange(kernel_x, "h w -> 1 1 h w")
+        kernel_x = e.rearrange(kernel_x.fliplr(), "h w -> 1 1 h w")
 
-        kernel_y = e.rearrange(kernel_x, "1 1 h w -> 1 1 w h")
+        kernel_y = e.rearrange(kernel_x.fliplr(), "1 1 h w -> 1 1 w h")
         depth = e.rearrange(depth, "h w -> 1 1 h w")
         FOCAL_POINT_X = self.camera_intrinsics.focal_point_x
         FOCAL_POINT_Y = self.camera_intrinsics.focal_point_y
@@ -48,8 +48,8 @@ class TFTN_module(L.LightningModule):
         )
         depth = e.rearrange(depth, "1 1 h w -> h w")
 
-        normals_x = directional_derivative_x * FOCAL_POINT_X
-        normals_y = directional_derivative_y * FOCAL_POINT_Y
+        normals_x = directional_derivative_x * FOCAL_POINT_X * 640
+        normals_y = directional_derivative_y * FOCAL_POINT_Y * 480
 
         # Normals Z
         normals_z_volume = (
@@ -62,7 +62,7 @@ class TFTN_module(L.LightningModule):
 
         for position in range(8):
             x_delta, y_delta, z_delta = self.compute_delta(
-                points_3d[..., 0], points_3d[..., 1], points_3d[..., 2], position
+                points_3d[..., 0], points_3d[..., 1], points_3d[..., 2], position + 1
             )
 
             normals_z_volume[..., position] = -(normals_x * x_delta + normals_y * y_delta) / z_delta
@@ -127,7 +127,7 @@ class TFTN_module(L.LightningModule):
         else:
             kernel = [[0, 0, 0], [0, 1, 0], [0, 0, -1]]
 
-        kernel = torch.tensor(kernel, device="cuda", dtype=torch.float).unsqueeze(0).unsqueeze(0)
+        kernel = torch.tensor(kernel, device="cuda", dtype=torch.float).fliplr().unsqueeze(0).unsqueeze(0)
         X_d = torch.conv2d(X, kernel, padding="same")
         Y_d = torch.conv2d(Y, kernel, padding="same")
         Z_d = torch.conv2d(Z, kernel, padding="same")

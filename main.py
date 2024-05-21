@@ -68,13 +68,15 @@ def load_tftn_depth(file_path: Path):
 
 
 def visualize_normals(normals) -> None:
-    cmap = matplotlib.colormaps["bwr"]
-    cmap.set_bad(color="black")
-    fig, axs = plt.subplots(nrows=3, ncols=1)
-    for axis in range(3):
-        plt.sca(axs[axis])
-        img = plt.imshow(normals[..., axis], cmap=cmap, vmin=-1, vmax=1)
-        plt.colorbar(img)
+    # cmap = matplotlib.colormaps["bwr"]
+    # cmap.set_bad(color="black")
+    normals = (1 - normals) / 2
+    # fig, axs = plt.subplots(nrows=3, ncols=1)
+    # for axis in range(3):
+        # plt.sca(axs[axis])
+        # img = plt.imshow(normals[..., axis], cmap=cmap, vmin=-1, vmax=1)
+        # plt.colorbar(img)
+    plt.imshow(normals)
 
 
 
@@ -104,9 +106,9 @@ nyu_unscaled_intrinsics.focal_point_x /= nyu_shape.width
 nyu_unscaled_intrinsics.focal_point_y /= nyu_shape.height
 nyu_unscaled_intrinsics.principal_point_x /= nyu_shape.width
 nyu_unscaled_intrinsics.principal_point_y /= nyu_shape.height
-manydepth = Manydepth_module(
-    Manydepth_Intrinsics(), Path("./manydepth_weights_KITTI_MR")
-)
+# manydepth = Manydepth_module(
+    # Manydepth_Intrinsics(), Path("./manydepth_weights_KITTI_MR")
+# )
 TFTN = TFTN_module(camera_intrinsics=TFTN_dataset_intrinsics(), input_shape=tftn_shape)
 
 

@@ -31,10 +31,10 @@ class CameraIntrinsics:
             torch.arange(shape.height), torch.arange(shape.width), indexing="ij"
         )
         grid[..., 0] = (
-            (grid_x - self.principal_point_x) / self.focal_point_x * shape.width
+            (grid_x - self.principal_point_x * shape.width) / (self.focal_point_x * shape.width)
         )
         grid[..., 1] = (
-            (grid_y - self.principal_point_y) / self.focal_point_y * shape.height
+            (grid_y - self.principal_point_y * shape.width) / (self.focal_point_y * shape.height)
         )
 
         return grid
