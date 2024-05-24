@@ -1,7 +1,11 @@
 from yaml import load_all
 from modules.tftn_module import TFTN_module
 from modules.manydepth import Manydepth_module
-from utils.camera_intrinsics import Manydepth_Intrinsics, NYU_Intrinsics, TFTN_dataset_intrinsics
+from utils.camera_intrinsics import (
+    Manydepth_Intrinsics,
+    NYU_Intrinsics,
+    TFTN_dataset_intrinsics,
+)
 from utils.image_shape import ImageShape
 
 import matplotlib
@@ -24,7 +28,7 @@ from typeguard import typechecked as typechecker
 @jaxtyped(typechecker=typechecker)
 def visualize_depth(depth: Float[np.ndarray, "h w"]) -> None:
     # normalizer = matplotlib.colors.Normalize(
-        # vmin=depth.min(), vmax=np.percentile(depth, 95)
+    # vmin=depth.min(), vmax=np.percentile(depth, 95)
     # )
     # mapper = cm.ScalarMappable(norm=normalizer, cmap="magma")
     # colormapped_im = (mapper.to_rgba(depth) * 255).astype(np.uint8)
@@ -60,34 +64,35 @@ def load_nyu_image(file_path: Path) -> Float[Tensor, "h=481 w=641 c=3"]:
     return image
 
 
-def load_tftn_depth(file_path: Path):
+@jaxtyped(typechecker=typechecker)
+def load_nyu_depth(file_path: Path) -> Float[Tensor, "h=481 w=641"]:
+    depth = loadmat(file_path)["depth"]
+    depth = torch.from_numpy(depth)
+    # depth = e.rearrange(depth, "h w -> h w")
+
+    return depth
+
+
+@jaxtyped(typechecker=typechecker)
+def load_tftn_depth(file_path: Path) -> Float[Tensor, "h=480 w=640"]:
     with open(file_path, mode="rb") as file:
         data = np.fromfile(file, dtype=np.float32)
     data = data.reshape(480, 640)
     return torch.from_numpy(data)
 
 
-def visualize_normals(normals) -> None:
+@jaxtyped(typechecker=typechecker)
+def visualize_normals(normals: Float[Tensor, "h w c=3"]) -> None:
     # cmap = matplotlib.colormaps["bwr"]
     # cmap.set_bad(color="black")
     normals = (1 - normals) / 2
     # fig, axs = plt.subplots(nrows=3, ncols=1)
     # for axis in range(3):
-        # plt.sca(axs[axis])
-        # axs[axis].set_aspect("equal")
-        # img = plt.imshow(normals[..., axis], cmap=cmap, vmin=-1, vmax=1)
-        # plt.colorbar(img)
+    # plt.sca(axs[axis])
+    # axs[axis].set_aspect("equal")
+    # img = plt.imshow(normals[..., axis], cmap=cmap, vmin=-1, vmax=1)
+    # plt.colorbar(img)
     plt.imshow(normals)
-
-
-def load_nyu_depth(file_path: Path):
-    # Load
-    depth = loadmat(file_path)["depth"]
-    depth = torch.from_numpy(depth)
-    depth = e.rearrange(depth, "h w -> h w")
-
-    return depth
-
 
 
 file_input = gr.FileExplorer(label="Input File", file_count="single", root_dir="C:/")
@@ -112,7 +117,7 @@ img_shape = ImageShape(height=375, width=1242, channels=3)
 tftn_shape = ImageShape(height=480, width=640, channels=3)
 
 # manydepth = Manydepth_module(
-    # Manydepth_Intrinsics(), Path("./manydepth_weights_KITTI_MR")
+# Manydepth_Intrinsics(), Path("./manydepth_weights_KITTI_MR")
 # )
 TFTN = TFTN_module(camera_intrinsics=NYU_Intrinsics(), input_shape=nyu_shape)
 
@@ -167,7 +172,7 @@ demo = gr.Interface(
 # image_src = load_rgb_image(Path("0000000026.png"))
 # image_tgt = load_rgb_image(Path("0000000026.png"))
 # depth_data = load_tftn_depth(Path("torus_tftn.bin"))
-depth_data = load_nyu_depth(Path("office_kitchen_0003_r-1315419135.670169-693301627.mat"))
+depth_data = load_nyu_depth(Path("bathroom_0010_r-1300403594.271759-2436195427.mat"))
 
 with torch.no_grad():
     # depth_pred = manydepth(image_tgt, image_src)
