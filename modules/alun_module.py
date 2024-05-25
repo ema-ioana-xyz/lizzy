@@ -36,7 +36,6 @@ class ALUN_module(L.LightningModule):
     def forward(
         self, img: Float[Tensor, "hin win c=3"]
     ) -> Float[Tensor, "hout wout c=3"]:
-        # img = img / 255.0
         img = e.rearrange(img, "h w c -> c h w")
         img = resize(img, [480, 640], interpolation=InterpolationMode.BICUBIC)
         img = self.normalize(img)
