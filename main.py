@@ -1,6 +1,7 @@
 from modules.plane_fitter import PlaneFitter_module
 from modules.tftn_module import TFTN_module
 from modules.plane_fitter import PlaneFitter_module
+from modules.alun_module import ALUN_module
 from modules.manydepth import Manydepth_module
 from utils.camera_intrinsics import (
     Manydepth_Intrinsics,
@@ -85,16 +86,17 @@ def load_tftn_depth(file_path: Path) -> Float[Tensor, "h=480 w=640"]:
 
 @jaxtyped(typechecker=typechecker)
 def visualize_normals(normals: Float[np.ndarray, "h w c=3"]) -> None:
-    # cmap = matplotlib.colormaps["bwr"]
-    # cmap.set_bad(color="black")
-    normals = (1 - normals) / 2
-    # fig, axs = plt.subplots(nrows=3, ncols=1)
-    # for axis in range(3):
-        # plt.sca(axs[axis])
-        # axs[axis].set_aspect("equal")
-        # img = plt.imshow(normals[..., axis], cmap=cmap, vmin=-1, vmax=1)
-        # plt.colorbar(img)
-    plt.imshow(normals)
+    cmap = matplotlib.colormaps["bwr"]
+    cmap.set_bad(color="black")
+    # plt.figure()
+    # normals = (1 - normals) / 2
+    fig, axs = plt.subplots(nrows=3, ncols=1)
+    for axis in range(3):
+        plt.sca(axs[axis])
+        axs[axis].set_aspect("equal")
+        img = plt.imshow(normals[..., axis], cmap=cmap, vmin=-1, vmax=1)
+        plt.colorbar(img)
+    # plt.imshow(normals)
 
 
 # file_input = gr.FileExplorer(label="Input File", file_count="single", root_dir="C:/")
@@ -126,6 +128,7 @@ shape = nyu_shape
 # )
 TFTN = TFTN_module(camera_intrinsics=intrinsics, input_shape=shape)
 PlaneFitter = PlaneFitter_module(camera_intrinsics=intrinsics, input_shape=shape)
+ALUN = ALUN_module()
 
 
 def predict_from_matfile(model: str, file_path_str: str):
@@ -185,7 +188,8 @@ img = load_nyu_image(Path("office_kitchen_0003_r-1315419135.670169-693301627.mat
 with torch.no_grad():
     # depth_pred = manydepth(image_tgt, image_src)
     # norm_pred =m TFTN(depth_data)
-    norm_pred = PlaneFitter(depth_data)
+    # norm_pred = PlaneFitter(depth_data)
+    norm_pred = ALUN(img)
     norm_pred = norm_pred.cpu().numpy()
 
 # depth_pred = depth_pred.cpu().numpy()
