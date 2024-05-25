@@ -1,6 +1,8 @@
 import dataclasses
 import torch
 from torch import Tensor
+from jaxtyping import Float, jaxtyped
+from typeguard import typechecked as typechecker
 
 from utils.image_shape import ImageShape
 
@@ -24,7 +26,8 @@ class CameraIntrinsics:
             ]
         )
 
-    def make_grid(self, shape: ImageShape) -> Tensor:
+    @jaxtyped(typechecker=typechecker)
+    def make_grid(self, shape: ImageShape) -> Float[Tensor, "h w c=3"]:
         grid = torch.ones([shape.height, shape.width, 3])
 
         grid_y, grid_x = torch.meshgrid(

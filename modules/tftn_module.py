@@ -5,6 +5,8 @@ from torch.nn.functional import unfold
 
 from utils.camera_intrinsics import CameraIntrinsics
 from utils.image_shape import ImageShape
+from jaxtyping import Float, jaxtyped
+from typeguard import typechecked as typechecker
 import einops as e
 
 
@@ -15,7 +17,8 @@ class TFTN_module(L.LightningModule):
         self.input_shape = input_shape
         self.intrinsics_derived_grid = camera_intrinsics.make_grid(input_shape).cuda()
 
-    def forward(self, depth: Tensor):
+    @jaxtyped(typechecker=typechecker)
+    def forward(self, depth: Float[Tensor, "h w"]) -> Float[Tensor, "h w 3"]:
         depth = depth.cuda()
 
         # Sobel filters for the first derivatives
