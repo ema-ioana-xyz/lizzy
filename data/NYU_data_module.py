@@ -16,4 +16,4 @@ class NyuDataModule(pl.LightningDataModule):
         Returns:
             The test data loader.
         """
-        return DataLoader(self.test, batch_size=self.config.kpi_evaluation.dataset.batch_size, num_workers=num_workers)
+        return DataLoader(self.test, batch_size=1, num_workers=num_workers)

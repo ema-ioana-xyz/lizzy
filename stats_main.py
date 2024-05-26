@@ -1,3 +1,4 @@
+from data.NYU_data_module import NyuDataModule
 from modules.plane_fitter import PlaneFitter_module
 from modules.tftn_module import TFTN_module
 from modules.plane_fitter import PlaneFitter_module
@@ -17,6 +18,7 @@ import torch
 from torch import Tensor
 from torchvision.io import read_image
 from torchvision.transforms.functional import to_tensor
+import lightning as L
 from scipy.io import loadmat
 import einops as e
 from pathlib import Path
@@ -122,7 +124,7 @@ tftn_shape = ImageShape(height=480, width=640, channels=3)
 
 
 intrinsics = NYU_Intrinsics()
-shape = nyu_shape
+shape = tftn_shape
 # manydepth = Manydepth_module(
 # Manydepth_Intrinsics(), Path("./manydepth_weights_KITTI_MR")
 # )
@@ -130,82 +132,8 @@ TFTN = TFTN_module(camera_intrinsics=intrinsics, input_shape=shape)
 PlaneFitter = PlaneFitter_module(camera_intrinsics=intrinsics, input_shape=shape)
 ALUN = ALUN_module()
 
+trainer = L.Trainer()
+test_dataset = NyuDataModule().test_dataloader(num_workers=0)
 
-def predict_from_matfile(model: str, file_path_str: str):
-    file_path = Path(file_path_str)
-    if file_path.suffix == ".mat":
-        image = load_nyu_image(file_path)
-
-        # data = loadmat(
-        #     file_path
-        # )
-        # depth = torch.from_numpy(data["depth"]).cuda()
-        # depth = e.rearrange(depth, "h w -> 1 h w")
-        # image = torch.from_numpy(data["img"]).cuda()
-        # normals_gt = data["norm"]
-        # mask = data["mask"]
-    else:  # Image file
-        image = load_rgb_image(file_path)
-        depth_pred = None
-
-    # normals_pred = module(depth)
-    with torch.no_grad():
-        depth_pred = manydepth(image, image)
-
-    depth_pred = depth_pred.cpu().numpy()
-    fig_depth = plt.figure()
-    visualize_depth(depth_pred)
-
-    # normals_pred = normals_pred.cpu().numpy()
-    # cmap = matplotlib.colormaps["bwr"]
-    # cmap.set_bad(color="black")
-    # fig_x = plt.figure()
-    # plt.imshow(normals_pred[..., 0], cmap=cmap)
-    # fig_y = plt.figure()
-    # plt.imshow(normals_pred[..., 1], cmap=cmap)
-    # fig_z = plt.figure()
-    # plt.imshow(normals_pred[..., 2], cmap=cmap)
-
-    # return fig_x, fig_y, fig_z
-    return fig_depth
-
-
-# demo = gr.Interface(
-#     fn=predict_from_matfile,
-#     inputs=[model_selector, file_input],
-#     outputs=depth_plot,
-# )
-
-# demo.launch()
-
-# image_src = load_rgb_image(Path("0000000026.png"))
-# image_tgt = load_rgb_image(Path("0000000026.png"))
-# depth_data = load_tftn_depth(Path("torus_tftn.bin"))
-depth_data = load_nyu_depth(Path("office_kitchen_0003_r-1315419135.670169-693301627.mat"))
-img = load_nyu_image(Path("office_kitchen_0003_r-1315419135.670169-693301627.mat"))
-
-
-with torch.no_grad():
-    # depth_pred = manydepth(image_tgt, image_src)
-    # norm_pred = TFTN(depth_data)
-    # norm_pred = PlaneFitter(depth_data)
-    norm_pred = ALUN(img)
-    norm_pred = norm_pred.cpu().numpy()
-
-# depth_pred = depth_pred.cpu().numpy()
-# visualize_depth(depth_pred)
-# plt.imshow(img)
-visualize_normals(norm_pred)
-# visualize_depth(depth_data.cpu().numpy())
-
-# # image = load_image(Path("0000000026.png"))
-# image = load_nyu_image(Path("bathroom_0010_r-1300403594.271759-2436195427.mat"))
-
-# with torch.no_grad():
-#     depth_pred = manydepth(image, image)
-
-# depth_pred = depth_pred.cpu().numpy()
-
-# fig = plt.figure()
-# visualize_depth(depth_pred)
-plt.show()
+for model in [TFTN, ALUN, PlaneFitter]:
+    trainer.test(model, dataloaders=test_dataset)

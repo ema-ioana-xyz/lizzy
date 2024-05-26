@@ -3,6 +3,7 @@ import torch
 from torch import Tensor, conv2d
 from torch.nn.functional import unfold
 
+from metrics.normal_metrics import L1_relative_error, RMS_error, RMS_log_error, delta_error
 from utils.camera_intrinsics import CameraIntrinsics
 from utils.image_shape import ImageShape
 from jaxtyping import Float, jaxtyped
@@ -83,6 +84,10 @@ class TFTN_module(L.LightningModule):
         normals = e.rearrange(normals, "c h w -> h w c")
         normals = torch.nn.functional.normalize(normals, dim=2)
 
+        # Flip vector so that it is in the same coordinate space as the other
+        # methods
+        normals = normals * -1
+
         # The D from Ax + By + Cz + D = 0
         # D_plane_shift_constant = -1
         # normals_z = D_plane_shift_constant * (x_part + y_part) / points_3d[..., 2]
@@ -130,3 +135,18 @@ class TFTN_module(L.LightningModule):
         inputs, target = batch
         output = self(inputs, target)
         return torch.zeros(1)
+
+    def test_step(self, batch):
+        depth = batch["depth"].squeeze(0)
+        normals_mask = batch["normals_mask"].squeeze(0)
+        normals_gt = batch["normals"].squeeze(0)
+
+        normals = self.forward(depth)
+
+        self.log("RMS error", RMS_error(normals, normals_gt, normals_mask))
+        self.log("RMS log error", RMS_log_error(normals, normals_gt, normals_mask))
+        self.log("L1 relative error", L1_relative_error(normals, normals_gt, normals_mask))
+        self.log("Ang err < 11.25", delta_error(normals, normals_gt, 11.25, normals_mask))
+        self.log("Ang err < 22.5", delta_error(normals, normals_gt, 22.5, normals_mask))
+        self.log("Ang err < 30", delta_error(normals, normals_gt, 30, normals_mask))
+        self.log("Ang err < 40", delta_error(normals, normals_gt, 45, normals_mask))

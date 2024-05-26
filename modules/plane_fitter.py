@@ -6,6 +6,7 @@ from jaxtyping import Float, jaxtyped
 from typeguard import typechecked as typechecker
 import einops as e
 
+from metrics.normal_metrics import L1_relative_error, RMS_error, RMS_log_error, delta_error
 from utils.camera_intrinsics import CameraIntrinsics
 from utils.image_shape import ImageShape
 
@@ -54,7 +55,7 @@ class PlaneFitter_module(L.LightningModule):
         A = patches
         B = torch.ones([1, 1, k**2, 1], dtype=torch.float, device=device)
 
-        normals = torch.linalg.lstsq(A, B).solution.to('cpu')
+        normals = torch.linalg.lstsq(A, B).solution
         del A, B
         # normals is [1 batch X Many kernels X 3 solution_components X 1 problem_solved]
 
@@ -67,7 +68,7 @@ class PlaneFitter_module(L.LightningModule):
 
         # Mark out the invalid normals obtained from the identity matrices
         identity_norm = torch.sqrt(torch.tensor(3, dtype=torch.float))
-        normals = torch.where(torch.isclose(vector_norms, identity_norm), float('NaN'), normals)
+        normals = torch.where(torch.isclose(vector_norms, identity_norm), 0.0, normals)
 
         normals = normals.unflatten(dim=1, sizes=image_shape).squeeze()
         return normals
@@ -76,3 +77,18 @@ class PlaneFitter_module(L.LightningModule):
         inputs, target = batch
         output = self(inputs, target)
         return torch.zeros(1)
+    
+    def test_step(self, batch):
+        depth = batch["depth"].squeeze()
+        normals_mask = batch["normals_mask"].squeeze()
+        normals_gt = batch["normals"].squeeze()
+
+        normals = self.forward(depth)
+
+        self.log("RMS error", RMS_error(normals, normals_gt, normals_mask))
+        self.log("RMS log error", RMS_log_error(normals, normals_gt, normals_mask))
+        self.log("L1 relative error", L1_relative_error(normals, normals_gt, normals_mask))
+        self.log("Ang err < 11.25", delta_error(normals, normals_gt, 11.25, normals_mask))
+        self.log("Ang err < 22.5", delta_error(normals, normals_gt, 22.5, normals_mask))
+        self.log("Ang err < 30", delta_error(normals, normals_gt, 30, normals_mask))
+        self.log("Ang err < 40", delta_error(normals, normals_gt, 45, normals_mask))

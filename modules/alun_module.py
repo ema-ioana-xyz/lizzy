@@ -12,6 +12,7 @@ from typeguard import typechecked as typechecker
 from alun.models.NNET import NNET
 from alun.utils.arguments import AlunArguments
 import alun.utils.utils as alun_utils
+from metrics.normal_metrics import L1_relative_error, RMS_error, RMS_log_error, delta_error, log10_error
 
 
 class ALUN_module(L.LightningModule):
@@ -37,7 +38,7 @@ class ALUN_module(L.LightningModule):
         self, img: Float[Tensor, "hin win c=3"]
     ) -> Float[Tensor, "hout wout c=3"]:
         img = e.rearrange(img, "h w c -> c h w")
-        img = resize(img, [480, 640], interpolation=InterpolationMode.BICUBIC)
+        # img = resize(img, [480, 640], interpolation=InterpolationMode.BICUBIC)
         img = self.normalize(img)
         img = img.unsqueeze(0).cuda()
 
@@ -47,3 +48,18 @@ class ALUN_module(L.LightningModule):
         pred_norm = norm_out[:, :3, :, :]
         normals = e.rearrange(pred_norm, "1 c h w -> h w c")
         return normals
+
+    def test_step(self, batch):
+        img = batch["image"].squeeze()
+        normals_mask = batch["normals_mask"].squeeze()
+        normals_gt = batch["normals"].squeeze()
+
+        normals = self.forward(img)
+
+        self.log("RMS error", RMS_error(normals, normals_gt, normals_mask))
+        self.log("RMS log error", RMS_log_error(normals, normals_gt, normals_mask))
+        self.log("L1 relative error", L1_relative_error(normals, normals_gt, normals_mask))
+        self.log("Ang err < 11.25", delta_error(normals, normals_gt, 11.25, normals_mask))
+        self.log("Ang err < 22.5", delta_error(normals, normals_gt, 22.5, normals_mask))
+        self.log("Ang err < 30", delta_error(normals, normals_gt, 30, normals_mask))
+        self.log("Ang err < 40", delta_error(normals, normals_gt, 45, normals_mask))

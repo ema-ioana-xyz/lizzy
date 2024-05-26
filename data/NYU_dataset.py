@@ -3,8 +3,9 @@ import torch
 from torchvision.transforms.functional import to_tensor
 from pathlib import Path
 import numpy as np
+import einops as e
 
-from data.dataset import CustomDataset, DataKey
+from data.dataset import CustomDataset
 
 
 class NyuDataSet(CustomDataset):
@@ -44,13 +45,14 @@ class NyuDataSet(CustomDataset):
         # Return data as Tensors following Pytorch dimension order conventions.
         # Images are [Channel X Height X Width] in Torchvision
         image = to_tensor(image)
+        image = e.rearrange(image, "c h w -> h w c")
 
         depth_mask = torch.from_numpy(depth_mask)
         normals_mask = depth_mask.unsqueeze(-1).expand(-1, -1, 3)  # [Height, Width, 3]
 
         # Channels dimensions with size 1 should be kept
-        depth_mask = depth_mask.unsqueeze(0)  # [1, Height, Width]
-        depth = torch.from_numpy(depth).unsqueeze(0)
+        # depth_mask = depth_mask.unsqueeze(0)  # [1, Height, Width]
+        # depth = torch.from_numpy(depth).unsqueeze(0)
         normals = torch.from_numpy(normals)
 
         data_dict = {
