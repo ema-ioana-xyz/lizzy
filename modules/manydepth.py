@@ -1,3 +1,4 @@
+from typing import Optional
 import lightning as L
 import torch
 from torch import Tensor
@@ -90,13 +91,27 @@ class Manydepth_module(L.LightningModule):
             self.pose_enc.cuda()
             self.pose_dec.cuda()
 
-    @jaxtyped(typechecker=typechecker)
+    def __str__(self):
+        return "Manydepth model string representation (default one is too long)"
+
+    # @jaxtyped(typechecker=typechecker)
     def forward(
-        self, input_frame: Float[Tensor, "h1 w1 c"], prev_frame: Float[Tensor, "h2 w2 c"]
+        self,
+        input_frame: Float[Tensor, "h1 w1 c"],
+        prev_frame: Optional[Float[Tensor, "h2 w2 c"]] = None,
+        multiframe: bool = False,
     ) -> Float[Tensor, "h1 w1"]:
         device = (
             torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         )
+
+        if (multiframe is True and prev_frame is None) or (
+            multiframe is False and prev_frame is not None
+        ):
+            raise (ValueError("Frame input and multiframe variable are inconsistent"))
+
+        if prev_frame is None:
+            prev_frame = input_frame
 
         input_frame = input_frame.to(device)
         prev_frame = prev_frame.to(device)
@@ -127,8 +142,7 @@ class Manydepth_module(L.LightningModule):
             axisangle[:, 0], translation[:, 0], invert=True
         )
 
-        # if args.mode == "mono":
-        if True:
+        if not multiframe:
             pose *= 0  # zero poses are a signal to the encoder not to construct a cost volume
             prev_frame *= 0
 
@@ -150,7 +164,6 @@ class Manydepth_module(L.LightningModule):
 
         output = self.depth_decoder(output)
 
-        
         sigmoid_output = output[("disp", 0)]
         sigmoid_output_resized = torch.nn.functional.interpolate(
             sigmoid_output, original_size, mode="bilinear", align_corners=False
@@ -159,7 +172,7 @@ class Manydepth_module(L.LightningModule):
         result = e.rearrange(sigmoid_output_resized, "1 1 h w -> h w")
         _, result = disp_to_depth(result, min_depth=0.1, max_depth=100.0)
         result = 5.4 * result
-        gt_median = 2
-        ratio = 12 / result.median()
+        gt_median = 12
+        ratio = gt_median / result.median()
         result = result * ratio
         return result

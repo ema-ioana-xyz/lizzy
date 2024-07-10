@@ -31,14 +31,13 @@ from typeguard import typechecked as typechecker
 
 @jaxtyped(typechecker=typechecker)
 def visualize_depth(depth: Float[np.ndarray, "h w"]) -> None:
-    fig = plt.figure()
     # normalizer = matplotlib.colors.Normalize(
     # vmin=depth.min(), vmax=np.percentile(depth, 95)
     # )
     # mapper = cm.ScalarMappable(norm=normalizer, cmap="magma")
     # colormapped_im = (mapper.to_rgba(depth) * 255).astype(np.uint8)
     max_depth = np.percentile(depth, 95).astype(float)
-    img = plt.imshow(depth, cmap="inferno", vmax=max_depth)
+    img = plt.imshow(depth, cmap="turbo", vmax=max_depth)
     plt.colorbar(img)
 
 
@@ -134,15 +133,17 @@ PlaneFitter = PlaneFitter_module(camera_intrinsics=intrinsics, input_shape=shape
 ALUN = ALUN_module()
 
 
-def run_image_prediction(
-    image_np: Int[np.ndarray, "h w c=3"],
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def run_image_prediction(image_np: Int[np.ndarray, "h w c=3"]):
     """Run prediction pipeline on a single image"""
     image = torch.from_numpy(image_np)
 
-    depth_image = manydepth.
-    
-    return image_np, image_np, image_np, image_np
+    with torch.no_grad():
+        depth_image = manydepth.forward(input_frame=image)
+
+    depth_figure = plt.figure()
+    visualize_depth(depth_image.cpu().numpy())
+
+    return depth_figure, depth_figure, depth_figure, depth_figure
 
 
 def run_video_prediction(video_path: str) -> tuple[str, str, str, str]:
@@ -217,10 +218,10 @@ with gr.Blocks(analytics_enabled=False) as demo:
                 submit_image = gr.Button(value="Run prediction")
                 image_input = gr.Image(label="Image Input", type="numpy")
             with gr.Column():
-                depth_output = gr.Image(label="Predicted depth")
-                tftn_sn_output = gr.Image(label="Three Filters to Normal SN")
-                planefitter_sn_output = gr.Image(label="PlaneFitter SN")
-                alun_sn_output = gr.Image(label="Aleatoric Uncertainty SN")
+                depth_output = gr.Plot(label="Predicted depth")
+                tftn_sn_output = gr.Plot(label="Three Filters to Normal SN")
+                planefitter_sn_output = gr.Plot(label="PlaneFitter SN")
+                alun_sn_output = gr.Plot(label="Aleatoric Uncertainty SN")
         submit_image.click(
             fn=run_image_prediction,
             inputs=image_input,
