@@ -12,21 +12,22 @@ from utils.image_shape import ImageShape
 
 
 class PlaneFitter_module(L.LightningModule):
-    def __init__(self, camera_intrinsics: CameraIntrinsics, input_shape: ImageShape):
+    def __init__(self, camera_intrinsics: CameraIntrinsics):
         super().__init__()
         self.camera_intrinsics = camera_intrinsics
-        self.input_shape = input_shape
-        self.intrinsics_derived_grid = camera_intrinsics.make_grid(input_shape).cuda()
 
     @jaxtyped(typechecker=typechecker)
     def forward(self, depth: Float[Tensor, "h w"]) -> Float[Tensor, "h w c=3"]:
         # Must be an odd integer
         KERNEL_SIZE = 9
 
+        input_shape = ImageShape(height=depth.shape[0], width=depth.shape[1], channels=3)
+        intrinsics_derived_grid = self.camera_intrinsics.make_grid(input_shape).cuda()
+
         depth = depth.cuda()
         device = depth.device
         depth = e.rearrange(depth, "h w -> h w 1")
-        points = self.intrinsics_derived_grid * depth
+        points = intrinsics_derived_grid * depth
         points = e.rearrange(points, "h w c -> 1 c h w")
 
         k = KERNEL_SIZE

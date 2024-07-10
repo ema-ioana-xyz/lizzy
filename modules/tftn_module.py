@@ -12,14 +12,16 @@ import einops as e
 
 
 class TFTN_module(L.LightningModule):
-    def __init__(self, camera_intrinsics: CameraIntrinsics, input_shape: ImageShape):
+    def __init__(self, camera_intrinsics: CameraIntrinsics):
         super().__init__()
         self.camera_intrinsics = camera_intrinsics
-        self.input_shape = input_shape
-        self.intrinsics_derived_grid = camera_intrinsics.make_grid(input_shape).cuda()
 
     @jaxtyped(typechecker=typechecker)
     def forward(self, depth: Float[Tensor, "h w"]) -> Float[Tensor, "h w 3"]:
+        input_shape = ImageShape(height=depth.shape[0], width=depth.shape[1], channels=3)
+
+        intrinsics_derived_grid = self.camera_intrinsics.make_grid(input_shape).cuda()
+
         depth = depth.cuda()
 
         # Sobel filters for the first derivatives
@@ -52,8 +54,8 @@ class TFTN_module(L.LightningModule):
         )
         depth = e.rearrange(depth, "1 1 h w -> h w")
 
-        normals_x = directional_derivative_x * FOCAL_POINT_X * self.input_shape.width
-        normals_y = directional_derivative_y * FOCAL_POINT_Y * self.input_shape.height
+        normals_x = directional_derivative_x * FOCAL_POINT_X * input_shape.width
+        normals_y = directional_derivative_y * FOCAL_POINT_Y * input_shape.height
 
         # Normals Z
         normals_z_volume = (
@@ -61,7 +63,7 @@ class TFTN_module(L.LightningModule):
         )
 
         depth = e.rearrange(depth, "h w -> h w 1")
-        points_3d = self.intrinsics_derived_grid * depth
+        points_3d = intrinsics_derived_grid * depth
         points_3d = points_3d.unsqueeze(0)
 
         for position in range(8):

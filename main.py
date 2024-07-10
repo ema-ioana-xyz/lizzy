@@ -136,13 +136,12 @@ img_shape = ImageShape(height=375, width=1242, channels=3)
 tftn_shape = ImageShape(height=480, width=640, channels=3)
 
 
-intrinsics = NYU_Intrinsics()
-shape = tftn_shape
+intrinsics = Manydepth_Intrinsics()
 manydepth = Manydepth_module(
 Manydepth_Intrinsics(), Path("./manydepth_weights_KITTI_MR")
 )
-TFTN = TFTN_module(camera_intrinsics=intrinsics, input_shape=shape)
-PlaneFitter = PlaneFitter_module(camera_intrinsics=intrinsics, input_shape=shape)
+TFTN = TFTN_module(camera_intrinsics=intrinsics)
+PlaneFitter = PlaneFitter_module(camera_intrinsics=intrinsics)
 ALUN = ALUN_module()
 
 
@@ -150,7 +149,6 @@ def run_image_prediction(image_np: Int[np.ndarray, "h w c=3"]):
     """Run prediction pipeline on a single image"""
     # Bring image into [0, 1] float range
     image = to_tensor(image_np)
-    image = resize(image, [shape.height, shape.width], InterpolationMode.BICUBIC)
     image = e.rearrange(image, "c h w -> h w c")
 
     with torch.no_grad():
