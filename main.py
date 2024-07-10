@@ -189,7 +189,7 @@ def predict_from_matfile(model: str, file_path_str: str):
     return fig_depth
 
 
-with gr.Blocks() as demo:
+with gr.Blocks(analytics_enabled=False) as demo:
     with gr.Tab("Video input"):
         with gr.Row():
             with gr.Column():
