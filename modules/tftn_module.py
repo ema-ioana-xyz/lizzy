@@ -52,8 +52,8 @@ class TFTN_module(L.LightningModule):
         )
         depth = e.rearrange(depth, "1 1 h w -> h w")
 
-        normals_x = directional_derivative_x * FOCAL_POINT_X * 640
-        normals_y = directional_derivative_y * FOCAL_POINT_Y * 480
+        normals_x = directional_derivative_x * FOCAL_POINT_X * self.input_shape.width
+        normals_y = directional_derivative_y * FOCAL_POINT_Y * self.input_shape.height
 
         # Normals Z
         normals_z_volume = (

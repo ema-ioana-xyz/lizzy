@@ -1,3 +1,4 @@
+import typing
 from modules.plane_fitter import PlaneFitter_module
 from modules.tftn_module import TFTN_module
 from modules.plane_fitter import PlaneFitter_module
@@ -13,6 +14,7 @@ from utils.image_shape import ImageShape
 import matplotlib
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
 import torch
 from torch import Tensor
 from torchvision.io import read_image
@@ -23,7 +25,7 @@ from pathlib import Path
 import PIL.Image as pil
 import numpy as np
 import gradio as gr
-from jaxtyping import Float, jaxtyped
+from jaxtyping import Float, Int, jaxtyped
 from typeguard import typechecked as typechecker
 
 
@@ -35,7 +37,8 @@ def visualize_depth(depth: Float[np.ndarray, "h w"]) -> None:
     # )
     # mapper = cm.ScalarMappable(norm=normalizer, cmap="magma")
     # colormapped_im = (mapper.to_rgba(depth) * 255).astype(np.uint8)
-    img = plt.imshow(depth, cmap="inferno", vmax=np.percentile(depth, 95))
+    max_depth = np.percentile(depth, 95).astype(float)
+    img = plt.imshow(depth, cmap="inferno", vmax=max_depth)
     plt.colorbar(img)
 
 
@@ -71,7 +74,6 @@ def load_nyu_image(file_path: Path) -> Float[Tensor, "h=481 w=641 c=3"]:
 def load_nyu_depth(file_path: Path) -> Float[Tensor, "h=481 w=641"]:
     depth = loadmat(file_path)["depth"]
     depth = torch.from_numpy(depth)
-    # depth = e.rearrange(depth, "h w -> h w")
 
     return depth
 
@@ -90,7 +92,8 @@ def visualize_normals(normals: Float[np.ndarray, "h w c=3"]) -> None:
     cmap.set_bad(color="black")
     # plt.figure()
     # normals = (1 - normals) / 2
-    fig, axs = plt.subplots(nrows=3, ncols=1)
+    _, axs = plt.subplots(nrows=3, ncols=1)
+    axs = typing.cast(list[Axes], axs)
     for axis in range(3):
         plt.sca(axs[axis])
         axs[axis].set_aspect("equal")
@@ -99,22 +102,22 @@ def visualize_normals(normals: Float[np.ndarray, "h w c=3"]) -> None:
     # plt.imshow(normals)
 
 
-# file_input = gr.FileExplorer(label="Input File", file_count="single", root_dir="C:/")
-# model_selector = gr.Dropdown(
-#     label="Model",
-#     choices=[
-#         "Three-Filters-To-Normal",
-#         "Three-Filters-To-Normal+",
-#         "Aleatoric Uncertainty",
-#         "Simple Plane Fitting",
-#     ],
-# )
+file_input = gr.FileExplorer(label="Input File", file_count="single", root_dir="C:/")
+model_selector = gr.Dropdown(
+    label="Model",
+    choices=[
+        "Three-Filters-To-Normal",
+        "Three-Filters-To-Normal+",
+        "Aleatoric Uncertainty",
+        "Simple Plane Fitting",
+    ],
+)
 
-# x_plot = gr.Plot(label="X Axis")
-# y_plot = gr.Plot(label="Y Axis")
-# z_plot = gr.Plot(label="Z Axis")
-# depth_plot = gr.Plot(label="Depth")
-# image_plot = gr.Plot(label="Image")
+x_plot = gr.Plot(label="X Axis")
+y_plot = gr.Plot(label="Y Axis")
+z_plot = gr.Plot(label="Z Axis")
+depth_plot = gr.Plot(label="Depth")
+image_plot = gr.Plot(label="Image")
 
 nyu_shape = ImageShape(height=481, width=641, channels=3)
 img_shape = ImageShape(height=375, width=1242, channels=3)
@@ -123,12 +126,28 @@ tftn_shape = ImageShape(height=480, width=640, channels=3)
 
 intrinsics = NYU_Intrinsics()
 shape = nyu_shape
-# manydepth = Manydepth_module(
-# Manydepth_Intrinsics(), Path("./manydepth_weights_KITTI_MR")
-# )
+manydepth = Manydepth_module(
+Manydepth_Intrinsics(), Path("./manydepth_weights_KITTI_MR")
+)
 TFTN = TFTN_module(camera_intrinsics=intrinsics, input_shape=shape)
 PlaneFitter = PlaneFitter_module(camera_intrinsics=intrinsics, input_shape=shape)
 ALUN = ALUN_module()
+
+
+def run_image_prediction(
+    image_np: Int[np.ndarray, "h w c=3"],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Run prediction pipeline on a single image"""
+    image = torch.from_numpy(image_np)
+
+    depth_image = manydepth.
+    
+    return image_np, image_np, image_np, image_np
+
+
+def run_video_prediction(video_path: str) -> tuple[str, str, str, str]:
+    print(video_path)
+    return video_path, video_path, video_path, video_path
 
 
 def predict_from_matfile(model: str, file_path_str: str):
@@ -170,42 +189,49 @@ def predict_from_matfile(model: str, file_path_str: str):
     return fig_depth
 
 
-# demo = gr.Interface(
-#     fn=predict_from_matfile,
-#     inputs=[model_selector, file_input],
-#     outputs=depth_plot,
-# )
+with gr.Blocks() as demo:
+    with gr.Tab("Video input"):
+        with gr.Row():
+            with gr.Column():
+                submit_video = gr.Button(value="Run prediction")
+                video_input = gr.Video(label="Video Input")
+            with gr.Column():
+                depth_output = gr.Video(label="Predicted depth")
+                tftn_sn_output = gr.Video(label="Three Filters to Normal SN")
+                planefitter_sn_output = gr.Video(label="PlaneFitter SN")
+                alun_sn_output = gr.Video(label="Aleatoric Uncertainty SN")
+            submit_video.click(
+                fn=run_video_prediction,
+                inputs=video_input,
+                outputs=[
+                    depth_output,
+                    tftn_sn_output,
+                    planefitter_sn_output,
+                    alun_sn_output,
+                ],
+            )
 
-# demo.launch()
+    with gr.Tab("Single image input"):
+        with gr.Row():
+            with gr.Column():
+                submit_image = gr.Button(value="Run prediction")
+                image_input = gr.Image(label="Image Input", type="numpy")
+            with gr.Column():
+                depth_output = gr.Image(label="Predicted depth")
+                tftn_sn_output = gr.Image(label="Three Filters to Normal SN")
+                planefitter_sn_output = gr.Image(label="PlaneFitter SN")
+                alun_sn_output = gr.Image(label="Aleatoric Uncertainty SN")
+        submit_image.click(
+            fn=run_image_prediction,
+            inputs=image_input,
+            outputs=[
+                depth_output,
+                tftn_sn_output,
+                planefitter_sn_output,
+                alun_sn_output,
+            ],
+        )
 
-# image_src = load_rgb_image(Path("0000000026.png"))
-# image_tgt = load_rgb_image(Path("0000000026.png"))
-# depth_data = load_tftn_depth(Path("torus_tftn.bin"))
-depth_data = load_nyu_depth(Path("office_kitchen_0003_r-1315419135.670169-693301627.mat"))
-img = load_nyu_image(Path("office_kitchen_0003_r-1315419135.670169-693301627.mat"))
 
-
-with torch.no_grad():
-    # depth_pred = manydepth(image_tgt, image_src)
-    # norm_pred = TFTN(depth_data)
-    # norm_pred = PlaneFitter(depth_data)
-    norm_pred = ALUN(img)
-    norm_pred = norm_pred.cpu().numpy()
-
-# depth_pred = depth_pred.cpu().numpy()
-# visualize_depth(depth_pred)
-# plt.imshow(img)
-visualize_normals(norm_pred)
-# visualize_depth(depth_data.cpu().numpy())
-
-# # image = load_image(Path("0000000026.png"))
-# image = load_nyu_image(Path("bathroom_0010_r-1300403594.271759-2436195427.mat"))
-
-# with torch.no_grad():
-#     depth_pred = manydepth(image, image)
-
-# depth_pred = depth_pred.cpu().numpy()
-
-# fig = plt.figure()
-# visualize_depth(depth_pred)
-plt.show()
+if __name__ == "__main__":
+    demo.launch()
