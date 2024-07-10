@@ -1,4 +1,6 @@
 import typing
+
+from matplotlib.figure import Figure
 from modules.plane_fitter import PlaneFitter_module
 from modules.tftn_module import TFTN_module
 from modules.plane_fitter import PlaneFitter_module
@@ -18,7 +20,8 @@ from matplotlib.axes import Axes
 import torch
 from torch import Tensor
 from torchvision.io import read_image
-from torchvision.transforms.functional import to_tensor
+from torchvision.transforms.v2.functional import resize, to_tensor
+from torchvision.transforms.v2 import InterpolationMode
 from scipy.io import loadmat
 import einops as e
 from pathlib import Path
@@ -30,7 +33,8 @@ from typeguard import typechecked as typechecker
 
 
 @jaxtyped(typechecker=typechecker)
-def visualize_depth(depth: Float[np.ndarray, "h w"]) -> None:
+def visualize_depth(depth: Float[np.ndarray, "h w"]) -> Figure:
+    figure = plt.figure()
     # normalizer = matplotlib.colors.Normalize(
     # vmin=depth.min(), vmax=np.percentile(depth, 95)
     # )
@@ -39,6 +43,31 @@ def visualize_depth(depth: Float[np.ndarray, "h w"]) -> None:
     max_depth = np.percentile(depth, 95).astype(float)
     img = plt.imshow(depth, cmap="turbo", vmax=max_depth)
     plt.colorbar(img)
+    figure.tight_layout()
+    return figure
+
+
+@jaxtyped(typechecker=typechecker)
+def visualize_normals_channelwise(normals: Float[np.ndarray, "h w c=3"]) -> Figure:
+    cmap = matplotlib.colormaps["bwr"]
+    cmap.set_bad(color="black")
+    figure, axs = plt.subplots(nrows=3, ncols=1, figsize=(5, 5))
+    axs = typing.cast(list[Axes], axs)
+    for axis in range(3):
+        plt.sca(axs[axis])
+        axs[axis].set_aspect("equal")
+        img = plt.imshow(normals[..., axis], cmap=cmap, vmin=-1, vmax=1)
+        plt.colorbar(img)
+    figure.tight_layout()
+    return figure
+
+
+@jaxtyped(typechecker=typechecker)
+def visualize_normals_combined(normals: Float[np.ndarray, "h w c=3"]) -> Figure:
+    figure = plt.figure()
+    normals = (1 - normals) / 2
+    plt.imshow(normals)
+    return figure
 
 
 @jaxtyped(typechecker=typechecker)
@@ -85,22 +114,6 @@ def load_tftn_depth(file_path: Path) -> Float[Tensor, "h=480 w=640"]:
     return torch.from_numpy(data)
 
 
-@jaxtyped(typechecker=typechecker)
-def visualize_normals(normals: Float[np.ndarray, "h w c=3"]) -> None:
-    cmap = matplotlib.colormaps["bwr"]
-    cmap.set_bad(color="black")
-    # plt.figure()
-    # normals = (1 - normals) / 2
-    _, axs = plt.subplots(nrows=3, ncols=1)
-    axs = typing.cast(list[Axes], axs)
-    for axis in range(3):
-        plt.sca(axs[axis])
-        axs[axis].set_aspect("equal")
-        img = plt.imshow(normals[..., axis], cmap=cmap, vmin=-1, vmax=1)
-        plt.colorbar(img)
-    # plt.imshow(normals)
-
-
 file_input = gr.FileExplorer(label="Input File", file_count="single", root_dir="C:/")
 model_selector = gr.Dropdown(
     label="Model",
@@ -124,7 +137,7 @@ tftn_shape = ImageShape(height=480, width=640, channels=3)
 
 
 intrinsics = NYU_Intrinsics()
-shape = nyu_shape
+shape = tftn_shape
 manydepth = Manydepth_module(
 Manydepth_Intrinsics(), Path("./manydepth_weights_KITTI_MR")
 )
@@ -135,15 +148,24 @@ ALUN = ALUN_module()
 
 def run_image_prediction(image_np: Int[np.ndarray, "h w c=3"]):
     """Run prediction pipeline on a single image"""
-    image = torch.from_numpy(image_np)
+    # Bring image into [0, 1] float range
+    image = to_tensor(image_np)
+    image = resize(image, [shape.height, shape.width], InterpolationMode.BICUBIC)
+    image = e.rearrange(image, "c h w -> h w c")
 
     with torch.no_grad():
         depth_image = manydepth.forward(input_frame=image)
+        tftn_normals = TFTN(depth_image).cpu().numpy()
+        planefitter_normals = PlaneFitter(depth_image).cpu().numpy()
+        alun_normals = ALUN(image).cpu().numpy()
 
-    depth_figure = plt.figure()
-    visualize_depth(depth_image.cpu().numpy())
+    tftn_figure = visualize_normals_channelwise(tftn_normals)
+    planefitter_figure = visualize_normals_channelwise(planefitter_normals)
+    alun_figure = visualize_normals_channelwise(alun_normals)
 
-    return depth_figure, depth_figure, depth_figure, depth_figure
+    depth_figure = visualize_depth(depth_image.cpu().numpy())
+
+    return depth_figure, tftn_figure, planefitter_figure, alun_figure
 
 
 def run_video_prediction(video_path: str) -> tuple[str, str, str, str]:
@@ -191,27 +213,6 @@ def predict_from_matfile(model: str, file_path_str: str):
 
 
 with gr.Blocks(analytics_enabled=False) as demo:
-    with gr.Tab("Video input"):
-        with gr.Row():
-            with gr.Column():
-                submit_video = gr.Button(value="Run prediction")
-                video_input = gr.Video(label="Video Input")
-            with gr.Column():
-                depth_output = gr.Video(label="Predicted depth")
-                tftn_sn_output = gr.Video(label="Three Filters to Normal SN")
-                planefitter_sn_output = gr.Video(label="PlaneFitter SN")
-                alun_sn_output = gr.Video(label="Aleatoric Uncertainty SN")
-            submit_video.click(
-                fn=run_video_prediction,
-                inputs=video_input,
-                outputs=[
-                    depth_output,
-                    tftn_sn_output,
-                    planefitter_sn_output,
-                    alun_sn_output,
-                ],
-            )
-
     with gr.Tab("Single image input"):
         with gr.Row():
             with gr.Column():
@@ -232,6 +233,26 @@ with gr.Blocks(analytics_enabled=False) as demo:
                 alun_sn_output,
             ],
         )
+    with gr.Tab("Video input"):
+        with gr.Row():
+            with gr.Column():
+                submit_video = gr.Button(value="Run prediction")
+                video_input = gr.Video(label="Video Input")
+            with gr.Column():
+                depth_output = gr.Video(label="Predicted depth")
+                tftn_sn_output = gr.Video(label="Three Filters to Normal SN")
+                planefitter_sn_output = gr.Video(label="PlaneFitter SN")
+                alun_sn_output = gr.Video(label="Aleatoric Uncertainty SN")
+            submit_video.click(
+                fn=run_video_prediction,
+                inputs=video_input,
+                outputs=[
+                    depth_output,
+                    tftn_sn_output,
+                    planefitter_sn_output,
+                    alun_sn_output,
+                ],
+            )
 
 
 if __name__ == "__main__":
