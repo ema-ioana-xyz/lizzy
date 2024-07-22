@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 import torch
 from torch import Tensor
-from torchvision.io import read_image
+from torchvision.io import read_image, read_video, write_video
 from torchvision.transforms.v2.functional import resize, to_tensor
 from torchvision.transforms.v2 import InterpolationMode
 from scipy.io import loadmat
@@ -28,7 +28,7 @@ from pathlib import Path
 import PIL.Image as pil
 import numpy as np
 import gradio as gr
-from jaxtyping import Float, Int, jaxtyped
+from jaxtyping import Float, Int, UInt8, jaxtyped
 from typeguard import typechecked as typechecker
 
 
@@ -167,8 +167,51 @@ def run_image_prediction(image_np: Int[np.ndarray, "h w c=3"]):
 
 
 def run_video_prediction(video_path: str) -> tuple[str, str, str, str]:
-    print(video_path)
-    return video_path, video_path, video_path, video_path
+    frames, _, _ = read_video(video_path, output_format="THWC")
+
+    with torch.no_grad():
+        single_video_prediction(model=manydepth, frames=frames, plot_fn=plot_depth_as_tensor)
+        # depth_image = manydepth.forward(input_frame=frame)
+        # tftn_normals = TFTN(depth_image).cpu().numpy()
+        # planefitter_normals = PlaneFitter(depth_image).cpu().numpy()
+        # alun_normals = ALUN(frame).cpu().numpy()
+
+    return R"C:\work\helvetica_neue\lizzy\video\pred.mp4", video_path, video_path, video_path
+
+
+@jaxtyped(typechecker=typechecker)
+def plot_depth_as_tensor(depth: Float[np.ndarray, "h w"]) -> UInt8[Tensor, "h w c=3"]:
+    depth_cm = cm.get_cmap("turbo")
+    depth = depth_cm(depth / np.quantile(depth, 0.85))
+    depth = depth[..., 0:3]
+    return torch.from_numpy(depth * 255).to(dtype=torch.uint8)
+
+
+@jaxtyped(typechecker=typechecker)
+def plot_normals_as_tensor(normals: Float[np.ndarray, "h w c=3"]) -> Float[Tensor, "h w c=3"]:
+    normal_cm = cm.get_cmap("bwr")
+    normals_x = torch.from_numpy(normal_cm(normals[..., 0]))
+    normals_y = torch.from_numpy(normal_cm(normals[..., 1]))
+    normals_z = torch.from_numpy(normal_cm(normals[..., 2]))
+    return torch.vstack([normals_x, normals_y, normals_z])
+
+
+def single_video_prediction(model, frames, plot_fn):
+    plots = []
+    for i, frame in enumerate(frames):
+        if i % 10 != 0:
+            continue
+
+        print(f"{i:03} / {len(frames)}")
+        # Rescale values into [0, 1.0] interval
+        frame = to_tensor(frame.numpy())
+        frame = e.rearrange(frame, "c h w -> h w c")
+        pred = model(frame)
+        pred = pred.cpu().numpy()
+        plots.append(plot_fn(pred))
+    print("Done ;3")
+    plots = torch.stack(plots, dim=0)
+    write_video(R"C:\work\helvetica_neue\lizzy\video\pred.mp4", plots, fps=4.0)
 
 
 def predict_from_matfile(model: str, file_path_str: str):
@@ -212,6 +255,7 @@ def predict_from_matfile(model: str, file_path_str: str):
 
 with gr.Blocks(analytics_enabled=False) as demo:
     with gr.Tab("Single image input"):
+        gr.Markdown("First run initializes some stuff. Subsequent runs should be faster")
         with gr.Row():
             with gr.Column():
                 submit_image = gr.Button(value="Run prediction")
@@ -232,6 +276,7 @@ with gr.Blocks(analytics_enabled=False) as demo:
             ],
         )
     with gr.Tab("Video input"):
+        gr.Markdown("First run initializes some stuff. Subsequent runs should be faster")
         with gr.Row():
             with gr.Column():
                 submit_video = gr.Button(value="Run prediction")
