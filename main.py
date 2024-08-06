@@ -34,7 +34,7 @@ from typeguard import typechecked as typechecker
 
 @jaxtyped(typechecker=typechecker)
 def visualize_depth(depth: Float[np.ndarray, "h w"]) -> Figure:
-    figure = plt.figure()
+    figure = plt.figure(figsize=(12, 4))
     # normalizer = matplotlib.colors.Normalize(
     # vmin=depth.min(), vmax=np.percentile(depth, 95)
     # )
@@ -51,7 +51,7 @@ def visualize_depth(depth: Float[np.ndarray, "h w"]) -> Figure:
 def visualize_normals_channelwise(normals: Float[np.ndarray, "h w c=3"]) -> Figure:
     cmap = matplotlib.colormaps["bwr"]
     cmap.set_bad(color="black")
-    figure, axs = plt.subplots(nrows=3, ncols=1, figsize=(5, 5))
+    figure, axs = plt.subplots(nrows=3, ncols=1, figsize=(10, 10))
     axs = typing.cast(list[Axes], axs)
     for axis in range(3):
         plt.sca(axs[axis])
@@ -174,42 +174,66 @@ def run_image_prediction(image_np: Int[np.ndarray, "h w c=3"], progress=gr.Progr
     return depth_figure, tftn_figure, planefitter_figure, alun_figure
 
 
-def run_video_prediction(video_path: str, progress=gr.Progress()) -> tuple[str, str, str, str]:
+def run_video_prediction(video_path: str, frame_skip, output_fps, progress=gr.Progress()) -> tuple[str, str, str, str]:
     rgb_frames, _, video_info = read_video(video_path, output_format="THWC")
 
     depth_path = "/home/eit/video/depth.mp4"
     alun_path = "/home/eit/video/alun.mp4"
+    tftn_path = "/home/eit/video/tftn.mp4"
+    planefitter_path = "/home/eit/video/pf.mp4"
 
     with torch.no_grad():
-        frame_skip = 20
-        single_video_prediction(
+        depth_frames = single_video_prediction(
             model=manydepth,
             frames=rgb_frames,
             plot_fn=plot_depth_as_tensor,
             frame_skip=frame_skip,
-            output_fps=1,
+            output_fps=output_fps,
             output_path=depth_path,
             progress_logger=progress,
             progress_start=0.0,
-            progress_stop=1/2,
+            progress_stop=1/4,
+            progress_description="ManyDepth depth prediction is running..."
         )
         single_video_prediction(
             model=ALUN,
             frames=rgb_frames,
             plot_fn=plot_normals_as_tensor,
             frame_skip=frame_skip,
-            output_fps=1,
+            output_fps=output_fps,
             output_path=alun_path,
             progress_logger=progress,
-            progress_start=1/2,
-            progress_stop=2/2,
+            progress_start=1/4,
+            progress_stop=2/4,
+            progress_description="Aleatoric Uncertainty is running..."
+        )
+
+        depth_sequence_prediction(
+            model=TFTN,
+            frames=depth_frames,
+            output_fps=output_fps,
+            output_path=tftn_path,
+            progress_logger=progress,
+            progress_start=2/4,
+            progress_stop=3/4,
+            progress_description="Three Filters to Normal is running..."
+        )
+        depth_sequence_prediction(
+            model=PlaneFitter,
+            frames=depth_frames,
+            output_fps=output_fps,
+            output_path=planefitter_path,
+            progress_logger=progress,
+            progress_start=3/4,
+            progress_stop=4/4,
+            progress_description="PlaneFitter is running..."
         )
         # depth_image = manydepth.forward(input_frame=frame)
         # tftn_normals = TFTN(depth_image).cpu().numpy()
         # planefitter_normals = PlaneFitter(depth_image).cpu().numpy()
         # alun_normals = ALUN(frame).cpu().numpy()
 
-    return depth_path, alun_path, video_path, video_path
+    return depth_path, tftn_path, planefitter_path, alun_path
 
 
 @jaxtyped(typechecker=typechecker)
@@ -226,7 +250,8 @@ def plot_normals_as_tensor(normals: Float[np.ndarray, "h w c=3"]) -> UInt8[Tenso
     normals_x = torch.from_numpy(normal_cm(normals[..., 0]))
     normals_y = torch.from_numpy(normal_cm(normals[..., 1]))
     normals_z = torch.from_numpy(normal_cm(normals[..., 2]))
-    stacked = torch.vstack([normals_x, normals_y, normals_z])
+    blank_line = torch.zeros([10, normals_x.shape[1], 4])
+    stacked = torch.vstack([normals_x, blank_line, normals_y, blank_line, normals_z])
 
     # Remove alpha channel
     return (stacked[..., :3] * 255).to(dtype=torch.uint8)
@@ -234,72 +259,61 @@ def plot_normals_as_tensor(normals: Float[np.ndarray, "h w c=3"]) -> UInt8[Tenso
 
 def single_video_prediction(
     model,
-    frames,
+    frames: Float[Tensor, "t c h w"],
     plot_fn,
     frame_skip: int,
     output_fps: float,
     output_path: str | Path,
     progress_logger: gr.Progress,
     progress_start: float,
-    progress_stop: float
-):
+    progress_stop: float,
+    progress_description: str,
+) -> list[Tensor]:
     plots = []
+    predictions = []
     for i, frame in enumerate(frames):
         if i % frame_skip != 0:
             continue
 
-        print(f"{i:03} / {len(frames)}")
         # Rescale values into [0, 1.0] interval
         frame = to_tensor(frame.numpy())
         frame = e.rearrange(frame, "c h w -> h w c")
         pred = model(frame)
-        pred = pred.cpu().numpy()
+        pred = pred.cpu()
+        predictions.append(pred)
+
+        pred = pred.numpy()
         plots.append(plot_fn(pred))
 
         progress_val = progress_start + (progress_stop - progress_start) / (len(frames) - 1) * i
-        progress_logger(progress_val)
-    print("Done ;3")
+        progress_logger(progress_val, desc=progress_description)
     plots = torch.stack(plots, dim=0)
     write_video(output_path, plots, fps=output_fps, video_codec="h264")
+    return(predictions)
 
 
-def predict_from_matfile(model: str, file_path_str: str):
-    file_path = Path(file_path_str)
-    if file_path.suffix == ".mat":
-        image = load_nyu_image(file_path)
+def depth_sequence_prediction(
+    model,
+    frames: list[Float[Tensor, "h w"]],
+    output_fps: float,
+    output_path: str | Path,
+    progress_logger: gr.Progress,
+    progress_start: float,
+    progress_stop: float,
+    progress_description: str,
+) -> None:
+    plots = []
+    for i, frame in enumerate(frames):
+        pred = model(frame)
+        pred = pred.cpu()
 
-        # data = loadmat(
-        #     file_path
-        # )
-        # depth = torch.from_numpy(data["depth"]).cuda()
-        # depth = e.rearrange(depth, "h w -> 1 h w")
-        # image = torch.from_numpy(data["img"]).cuda()
-        # normals_gt = data["norm"]
-        # mask = data["mask"]
-    else:  # Image file
-        image = load_rgb_image(file_path)
-        depth_pred = None
+        pred = pred.numpy()
+        plots.append(plot_normals_as_tensor(pred))
 
-    # normals_pred = module(depth)
-    with torch.no_grad():
-        depth_pred = manydepth(image, image)
-
-    depth_pred = depth_pred.cpu().numpy()
-    fig_depth = plt.figure()
-    visualize_depth(depth_pred)
-
-    # normals_pred = normals_pred.cpu().numpy()
-    # cmap = matplotlib.colormaps["bwr"]
-    # cmap.set_bad(color="black")
-    # fig_x = plt.figure()
-    # plt.imshow(normals_pred[..., 0], cmap=cmap)
-    # fig_y = plt.figure()
-    # plt.imshow(normals_pred[..., 1], cmap=cmap)
-    # fig_z = plt.figure()
-    # plt.imshow(normals_pred[..., 2], cmap=cmap)
-
-    # return fig_x, fig_y, fig_z
-    return fig_depth
+        progress_val = progress_start + (progress_stop - progress_start) / (len(frames) - 1) * i
+        progress_logger(progress_val, desc=progress_description)
+    plots = torch.stack(plots, dim=0)
+    write_video(output_path, plots, fps=output_fps, video_codec="h264")
 
 
 with gr.Blocks(analytics_enabled=False) as demo:
@@ -307,8 +321,8 @@ with gr.Blocks(analytics_enabled=False) as demo:
         gr.Markdown("First run initializes some stuff. Subsequent runs should be faster")
         with gr.Row():
             with gr.Column():
-                submit_image = gr.Button(value="Run prediction")
                 image_input = gr.Image(label="Image Input", type="numpy")
+                submit_image = gr.Button(value="Run prediction")
             with gr.Column():
                 depth_output = gr.Plot(label="Predicted depth")
                 tftn_sn_output = gr.Plot(label="Three Filters to Normal SN")
@@ -328,8 +342,25 @@ with gr.Blocks(analytics_enabled=False) as demo:
         gr.Markdown("First run initializes some stuff. Subsequent runs should be faster")
         with gr.Row():
             with gr.Column():
-                submit_video = gr.Button(value="Run prediction")
                 video_input = gr.Video(label="Video Input")
+                frame_skip_selector = gr.Number(
+                    label="Frame skipping",
+                    info="Only process every `N`th frame to save execution time. This sets `N`.",
+                    value=10,
+                    minimum=1,
+                    maximum=500,
+                    step=1,
+                    precision=0,
+                    )
+                fps_selector = gr.Number(
+                    label="Output framerate",
+                    value=5,
+                    minimum=0.5,
+                    maximum=60,
+                    step=0.1,
+                    precision=1,
+                    )
+                submit_video = gr.Button(value="Run prediction")
             with gr.Column():
                 depth_output = gr.Video(label="Predicted depth")
                 tftn_sn_output = gr.Video(label="Three Filters to Normal SN")
@@ -337,7 +368,7 @@ with gr.Blocks(analytics_enabled=False) as demo:
                 alun_sn_output = gr.Video(label="Aleatoric Uncertainty SN")
             submit_video.click(
                 fn=run_video_prediction,
-                inputs=video_input,
+                inputs=[video_input, frame_skip_selector, fps_selector],
                 outputs=[
                     depth_output,
                     tftn_sn_output,
