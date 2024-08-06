@@ -1,6 +1,7 @@
 __pycache__/
 lightning_logs/
 alun_weights/
+manydepth_weights_MR
 *.pth
 *.mat
 *.png

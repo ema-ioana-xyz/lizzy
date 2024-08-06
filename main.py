@@ -138,7 +138,7 @@ tftn_shape = ImageShape(height=480, width=640, channels=3)
 
 intrinsics = Manydepth_Intrinsics()
 manydepth = Manydepth_module(
-Manydepth_Intrinsics(), Path("./manydepth_weights_KITTI_MR")
+Manydepth_Intrinsics(), Path("/home/eit/lizzy/manydepth_weights_MR/KITTI_MR")
 )
 TFTN = TFTN_module(camera_intrinsics=intrinsics)
 PlaneFitter = PlaneFitter_module(camera_intrinsics=intrinsics)
