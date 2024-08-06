@@ -145,7 +145,7 @@ PlaneFitter = PlaneFitter_module(camera_intrinsics=intrinsics)
 ALUN = ALUN_module()
 
 
-def run_image_prediction(image_np: Int[np.ndarray, "h w c=3"]):
+def run_image_prediction(image_np: Int[np.ndarray, "h w c=3"], progress=gr.Progress()):
     """Run prediction pipeline on a single image"""
     # Bring image into [0, 1] float range
     image = to_tensor(image_np)
@@ -153,53 +153,99 @@ def run_image_prediction(image_np: Int[np.ndarray, "h w c=3"]):
 
     with torch.no_grad():
         depth_image = manydepth.forward(input_frame=image)
+        progress(1/4)
+
         tftn_normals = TFTN(depth_image).cpu().numpy()
+        progress(2/4)
+
         planefitter_normals = PlaneFitter(depth_image).cpu().numpy()
+        progress(3/4)
+
         alun_normals = ALUN(image).cpu().numpy()
+        progress(1 - 1/8)
 
     tftn_figure = visualize_normals_channelwise(tftn_normals)
     planefitter_figure = visualize_normals_channelwise(planefitter_normals)
     alun_figure = visualize_normals_channelwise(alun_normals)
 
     depth_figure = visualize_depth(depth_image.cpu().numpy())
+    progress(1.0)
 
     return depth_figure, tftn_figure, planefitter_figure, alun_figure
 
 
-def run_video_prediction(video_path: str) -> tuple[str, str, str, str]:
-    frames, _, _ = read_video(video_path, output_format="THWC")
+def run_video_prediction(video_path: str, progress=gr.Progress()) -> tuple[str, str, str, str]:
+    rgb_frames, _, video_info = read_video(video_path, output_format="THWC")
+
+    depth_path = "/home/eit/video/depth.mp4"
+    alun_path = "/home/eit/video/alun.mp4"
 
     with torch.no_grad():
-        single_video_prediction(model=manydepth, frames=frames, plot_fn=plot_depth_as_tensor)
+        frame_skip = 20
+        single_video_prediction(
+            model=manydepth,
+            frames=rgb_frames,
+            plot_fn=plot_depth_as_tensor,
+            frame_skip=frame_skip,
+            output_fps=1,
+            output_path=depth_path,
+            progress_logger=progress,
+            progress_start=0.0,
+            progress_stop=1/2,
+        )
+        single_video_prediction(
+            model=ALUN,
+            frames=rgb_frames,
+            plot_fn=plot_normals_as_tensor,
+            frame_skip=frame_skip,
+            output_fps=1,
+            output_path=alun_path,
+            progress_logger=progress,
+            progress_start=1/2,
+            progress_stop=2/2,
+        )
         # depth_image = manydepth.forward(input_frame=frame)
         # tftn_normals = TFTN(depth_image).cpu().numpy()
         # planefitter_normals = PlaneFitter(depth_image).cpu().numpy()
         # alun_normals = ALUN(frame).cpu().numpy()
 
-    return R"C:\work\helvetica_neue\lizzy\video\pred.mp4", video_path, video_path, video_path
+    return depth_path, alun_path, video_path, video_path
 
 
 @jaxtyped(typechecker=typechecker)
 def plot_depth_as_tensor(depth: Float[np.ndarray, "h w"]) -> UInt8[Tensor, "h w c=3"]:
-    depth_cm = cm.get_cmap("turbo")
+    depth_cm = plt.get_cmap("turbo")
     depth = depth_cm(depth / np.quantile(depth, 0.85))
     depth = depth[..., 0:3]
     return torch.from_numpy(depth * 255).to(dtype=torch.uint8)
 
 
 @jaxtyped(typechecker=typechecker)
-def plot_normals_as_tensor(normals: Float[np.ndarray, "h w c=3"]) -> Float[Tensor, "h w c=3"]:
-    normal_cm = cm.get_cmap("bwr")
+def plot_normals_as_tensor(normals: Float[np.ndarray, "h w c=3"]) -> UInt8[Tensor, "h_cat w c=3"]:
+    normal_cm = plt.get_cmap("bwr")
     normals_x = torch.from_numpy(normal_cm(normals[..., 0]))
     normals_y = torch.from_numpy(normal_cm(normals[..., 1]))
     normals_z = torch.from_numpy(normal_cm(normals[..., 2]))
-    return torch.vstack([normals_x, normals_y, normals_z])
+    stacked = torch.vstack([normals_x, normals_y, normals_z])
+
+    # Remove alpha channel
+    return (stacked[..., :3] * 255).to(dtype=torch.uint8)
 
 
-def single_video_prediction(model, frames, plot_fn):
+def single_video_prediction(
+    model,
+    frames,
+    plot_fn,
+    frame_skip: int,
+    output_fps: float,
+    output_path: str | Path,
+    progress_logger: gr.Progress,
+    progress_start: float,
+    progress_stop: float
+):
     plots = []
     for i, frame in enumerate(frames):
-        if i % 10 != 0:
+        if i % frame_skip != 0:
             continue
 
         print(f"{i:03} / {len(frames)}")
@@ -209,9 +255,12 @@ def single_video_prediction(model, frames, plot_fn):
         pred = model(frame)
         pred = pred.cpu().numpy()
         plots.append(plot_fn(pred))
+
+        progress_val = progress_start + (progress_stop - progress_start) / (len(frames) - 1) * i
+        progress_logger(progress_val)
     print("Done ;3")
     plots = torch.stack(plots, dim=0)
-    write_video(R"C:\work\helvetica_neue\lizzy\video\pred.mp4", plots, fps=4.0)
+    write_video(output_path, plots, fps=output_fps, video_codec="h264")
 
 
 def predict_from_matfile(model: str, file_path_str: str):
