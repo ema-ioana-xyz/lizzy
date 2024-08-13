@@ -99,40 +99,36 @@ def visualize_normals(normals: Float[np.ndarray, "h w c=3"]) -> None:
         plt.colorbar(img)
     # plt.imshow(normals)
 
-
-# file_input = gr.FileExplorer(label="Input File", file_count="single", root_dir="C:/")
-# model_selector = gr.Dropdown(
-#     label="Model",
-#     choices=[
-#         "Three-Filters-To-Normal",
-#         "Three-Filters-To-Normal+",
-#         "Aleatoric Uncertainty",
-#         "Simple Plane Fitting",
-#     ],
-# )
-
-# x_plot = gr.Plot(label="X Axis")
-# y_plot = gr.Plot(label="Y Axis")
-# z_plot = gr.Plot(label="Z Axis")
-# depth_plot = gr.Plot(label="Depth")
-# image_plot = gr.Plot(label="Image")
-
 nyu_shape = ImageShape(height=481, width=641, channels=3)
 img_shape = ImageShape(height=375, width=1242, channels=3)
 tftn_shape = ImageShape(height=480, width=640, channels=3)
 
 
 intrinsics = NYU_Intrinsics()
-shape = tftn_shape
 # manydepth = Manydepth_module(
 # Manydepth_Intrinsics(), Path("./manydepth_weights_KITTI_MR")
 # )
-TFTN = TFTN_module(camera_intrinsics=intrinsics, input_shape=shape)
-PlaneFitter = PlaneFitter_module(camera_intrinsics=intrinsics, input_shape=shape)
+
 ALUN = ALUN_module()
 
 trainer = L.Trainer()
 test_dataset = NyuDataModule().test_dataloader(num_workers=0)
 
-for model in [TFTN, ALUN, PlaneFitter]:
-    trainer.test(model, dataloaders=test_dataset)
+# print("ALUN results:")
+# trainer.test(ALUN, dataloaders=test_dataset)
+# print("---->>ALUN test end <<---")
+
+# for k in [3, 5, 7]:
+#     for kernel in ["fd", "sobel", "prewitt", "scharr"]:
+#         TFTN = TFTN_module(camera_intrinsics=intrinsics, kernel_size=k, kernel_type=kernel)
+#         print(f"TFTN size {k} type {kernel} results:")
+#         trainer.test(TFTN, dataloaders=test_dataset)
+#         print(f"---->>TFTN size {k} type {kernel} test end <<---")
+
+# for k in [3, 5, 7, 9, 11, 13]:
+for k in [15, 17, 19, 21]:
+    PlaneFitter = PlaneFitter_module(camera_intrinsics=intrinsics, kernel_size=k)
+    print(f"PlaneFitter size {k} results:")
+    trainer.test(PlaneFitter, dataloaders=test_dataset)
+    print(f"---->>PlaneFitter size {k} test end <<---")
+

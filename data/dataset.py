@@ -4,7 +4,7 @@ from torch.utils.data import Dataset
 class CustomDataset(Dataset):
 
     def __init__(self) -> None:
-        data_path = "../lizzy_data/list/test_files.txt"
+        data_path = "/home/eit/mnt/ema-ioana-tit/geonet_nyu/GeoNet/gt/test_split.txt"
 
         with open(data_path) as file:
             self.image_paths = [line.rstrip() for line in file.readlines()]
