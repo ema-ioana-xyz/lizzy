@@ -12,7 +12,7 @@ from typeguard import typechecked as typechecker
 from alun.models.NNET import NNET
 from alun.utils.arguments import AlunArguments
 import alun.utils.utils as alun_utils
-from metrics.normal_metrics import L1_relative_error, RMS_error, RMS_log_error, delta_error, log10_error
+from metrics.normal_metrics import RMS_error, sn_angle_error, mean_of_values_under_threshold
 
 
 class ALUN_module(L.LightningModule):
@@ -56,10 +56,14 @@ class ALUN_module(L.LightningModule):
 
         normals = self.forward(img)
 
+        angle_error_vector = sn_angle_error(normals, normals_gt, normals_mask)
+
+        self.log("Mean angle error", angle_error_vector.mean())
+        self.log("Median angle error", angle_error_vector.median())
         self.log("RMS error", RMS_error(normals, normals_gt, normals_mask))
-        self.log("RMS log error", RMS_log_error(normals, normals_gt, normals_mask))
-        self.log("L1 relative error", L1_relative_error(normals, normals_gt, normals_mask))
-        self.log("Ang err < 11.25", delta_error(normals, normals_gt, 11.25, normals_mask))
-        self.log("Ang err < 22.5", delta_error(normals, normals_gt, 22.5, normals_mask))
-        self.log("Ang err < 30", delta_error(normals, normals_gt, 30, normals_mask))
-        self.log("Ang err < 40", delta_error(normals, normals_gt, 45, normals_mask))
+        self.log("Ang err < 5", mean_of_values_under_threshold(angle_error_vector, 5))
+        self.log("Ang err < 7.5", mean_of_values_under_threshold(angle_error_vector, 7.5))
+        self.log("Ang err < 11.25", mean_of_values_under_threshold(angle_error_vector, 11.25))
+        self.log("Ang err < 22.5", mean_of_values_under_threshold(angle_error_vector, 22.5))
+        self.log("Ang err < 30", mean_of_values_under_threshold(angle_error_vector, 30))
+        self.log("Ang err < 45", mean_of_values_under_threshold(angle_error_vector, 45))

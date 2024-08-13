@@ -3,7 +3,7 @@ import torch
 from torch import Tensor, conv2d
 from torch.nn.functional import unfold
 
-from metrics.normal_metrics import L1_relative_error, RMS_error, RMS_log_error, delta_error
+from metrics.normal_metrics import RMS_error, mean_of_values_under_threshold, sn_angle_error
 from utils.camera_intrinsics import CameraIntrinsics
 from utils.image_shape import ImageShape
 from jaxtyping import Float, jaxtyped
@@ -12,9 +12,144 @@ import einops as e
 
 
 class TFTN_module(L.LightningModule):
-    def __init__(self, camera_intrinsics: CameraIntrinsics):
+    def __init__(self, camera_intrinsics: CameraIntrinsics, kernel_size: int = 3, kernel_type: str = "sobel"):
         super().__init__()
         self.camera_intrinsics = camera_intrinsics
+
+        self.kernels = {}
+
+        self.kernels[("sobel", 3)] = torch.tensor(
+            [
+                [-1, 0, 1],
+                [-2, 0, 2],
+                [-1, 0, 1],
+            ],
+            device="cuda",
+            dtype=torch.float,
+        )
+
+        self.kernels[("scharr", 3)] = torch.tensor(
+            [
+                [-3,  0,  3],
+                [-10, 0, 10],
+                [-3,  0,  3],
+            ],
+            device="cuda",
+            dtype=torch.float,
+        )
+
+        self.kernels[("prewitt", 3)] = torch.tensor(
+            [
+                [-1, 0, 1],
+                [-1, 0, 1],
+                [-1, 0, 1],
+            ],
+            device="cuda",
+            dtype=torch.float,
+        )
+
+        for size in [3, 5, 7]:
+            fd_filter = torch.zeros((size, size), dtype=torch.float, device="cuda")
+            middle = (size - 1) // 2
+            for i in range(middle):
+                fd_filter[middle, middle + i] = i
+                fd_filter[middle, middle - i] = -i
+            
+            self.kernels[("fd", size)] = fd_filter
+
+        sobel5 = """
+            -1    -2     0     2     1
+            -4    -8     0     8     4
+            -6   -12     0    12     6
+            -4    -8     0     8     4
+            -1    -2     0     2     1
+            """
+        
+        sobel7 = """
+            -1    -4    -5     0     5     4     1
+            -6   -24   -30     0    30    24     6
+            -15   -60   -75     0    75    60    15
+            -20   -80  -100     0   100    80    20
+            -15   -60   -75     0    75    60    15
+            -6   -24   -30     0    30    24     6
+            -1    -4    -5     0     5     4     1
+            """
+
+        prewitt5 = """
+            -1    -1     0     1     1
+            -2    -2     0     2     2
+            -3    -3     0     3     3
+            -2    -2     0     2     2
+            -1    -1     0     1     1"""
+        
+        prewitt7 = """
+            -1    -2    -2     0     2     2     1
+            -3    -6    -6     0     6     6     3
+            -6   -12   -12     0    12    12     6
+            -7   -14   -14     0    14    14     7
+            -6   -12   -12     0    12    12     6
+            -3    -6    -6     0     6     6     3
+            -1    -2    -2     0     2     2     1"""
+        
+        
+        scharr5 = """
+        -27         -90           0          90          27
+        -180        -600           0         600         180
+        -354       -1180           0        1180         354
+        -180        -600           0         600         180
+         -27         -90           0          90          27"""
+        
+        scharr7 = """
+        -243       -1620       -2943           0        2943        1620         243
+       -2430      -16200      -29430           0       29430       16200        2430
+       -8829      -58860     -106929           0      106929       58860        8829
+      -13860      -92400     -167860           0      167860       92400       13860
+       -8829      -58860     -106929           0      106929       58860        8829
+       -2430      -16200      -29430           0       29430       16200        2430
+        -243       -1620       -2943           0        2943        1620         243"""
+
+        for s in [sobel5, sobel7]:
+            lines = s.split("\n")
+            lines = [line.split() for line in lines]
+            lines = [line for line in lines if len(line) > 0]
+
+            k = len(lines)
+
+            for i in range(k):
+                lines[i] = [int(x) for x in lines[i]]
+            
+            filter = torch.tensor(lines, dtype=torch.float, device="cuda")
+            self.kernels[("sobel", k)] = filter
+
+        for s in [prewitt5, prewitt7]:
+            lines = s.split("\n")
+            lines = [line.split() for line in lines]
+            lines = [line for line in lines if len(line) > 0]
+
+            k = len(lines)
+
+            for i in range(k):
+                lines[i] = [int(x) for x in lines[i]]
+            
+            filter = torch.tensor(lines, dtype=torch.float, device="cuda")
+            self.kernels[("prewitt", k)] = filter
+
+        for s in [scharr5, scharr7]:
+            lines = s.split("\n")
+            lines = [line.split() for line in lines]
+            lines = [line for line in lines if len(line) > 0]
+
+            k = len(lines)
+
+            for i in range(k):
+                lines[i] = [int(x) for x in lines[i]]
+            
+            filter = torch.tensor(lines, dtype=torch.float, device="cuda")
+            self.kernels[("scharr", k)] = filter
+
+        self.kernel_x = self.kernels[(kernel_type, kernel_size)]
+
+       
 
     @jaxtyped(typechecker=typechecker)
     def forward(self, depth: Float[Tensor, "h w"]) -> Float[Tensor, "h w 3"]:
@@ -25,15 +160,7 @@ class TFTN_module(L.LightningModule):
         depth = depth.cuda()
 
         # Sobel filters for the first derivatives
-        kernel_x = torch.tensor(
-            [
-                [-1, 0, 1],
-                [-2, 0, 2],
-                [-1, 0, 1],
-            ],
-            device="cuda",
-            dtype=torch.float,
-        )
+        kernel_x = self.kernel_x
         kernel_x = e.rearrange(kernel_x.fliplr(), "h w -> 1 1 h w")
 
         kernel_y = e.rearrange(kernel_x.fliplr(), "1 1 h w -> 1 1 w h")
@@ -145,10 +272,14 @@ class TFTN_module(L.LightningModule):
 
         normals = self.forward(depth)
 
+        angle_error_vector = sn_angle_error(normals, normals_gt, normals_mask)
+
+        self.log("Mean angle error", angle_error_vector.mean())
+        self.log("Median angle error", angle_error_vector.median())
         self.log("RMS error", RMS_error(normals, normals_gt, normals_mask))
-        self.log("RMS log error", RMS_log_error(normals, normals_gt, normals_mask))
-        self.log("L1 relative error", L1_relative_error(normals, normals_gt, normals_mask))
-        self.log("Ang err < 11.25", delta_error(normals, normals_gt, 11.25, normals_mask))
-        self.log("Ang err < 22.5", delta_error(normals, normals_gt, 22.5, normals_mask))
-        self.log("Ang err < 30", delta_error(normals, normals_gt, 30, normals_mask))
-        self.log("Ang err < 40", delta_error(normals, normals_gt, 45, normals_mask))
+        self.log("Ang err < 5", mean_of_values_under_threshold(angle_error_vector, 5))
+        self.log("Ang err < 7.5", mean_of_values_under_threshold(angle_error_vector, 7.5))
+        self.log("Ang err < 11.25", mean_of_values_under_threshold(angle_error_vector, 11.25))
+        self.log("Ang err < 22.5", mean_of_values_under_threshold(angle_error_vector, 22.5))
+        self.log("Ang err < 30", mean_of_values_under_threshold(angle_error_vector, 30))
+        self.log("Ang err < 45", mean_of_values_under_threshold(angle_error_vector, 45))

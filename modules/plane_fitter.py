@@ -6,20 +6,21 @@ from jaxtyping import Float, jaxtyped
 from typeguard import typechecked as typechecker
 import einops as e
 
-from metrics.normal_metrics import L1_relative_error, RMS_error, RMS_log_error, delta_error
+from metrics.normal_metrics import RMS_error, mean_of_values_under_threshold, sn_angle_error
 from utils.camera_intrinsics import CameraIntrinsics
 from utils.image_shape import ImageShape
 
 
 class PlaneFitter_module(L.LightningModule):
-    def __init__(self, camera_intrinsics: CameraIntrinsics):
+    def __init__(self, camera_intrinsics: CameraIntrinsics, kernel_size: int):
         super().__init__()
         self.camera_intrinsics = camera_intrinsics
+        self.kernel_size = kernel_size
 
     @jaxtyped(typechecker=typechecker)
     def forward(self, depth: Float[Tensor, "h w"]) -> Float[Tensor, "h w c=3"]:
         # Must be an odd integer
-        KERNEL_SIZE = 9
+        KERNEL_SIZE = self.kernel_size
 
         input_shape = ImageShape(height=depth.shape[0], width=depth.shape[1], channels=3)
         intrinsics_derived_grid = self.camera_intrinsics.make_grid(input_shape).cuda()
@@ -86,10 +87,14 @@ class PlaneFitter_module(L.LightningModule):
 
         normals = self.forward(depth)
 
+        angle_error_vector = sn_angle_error(normals, normals_gt, normals_mask)
+
+        self.log("Mean angle error", angle_error_vector.mean())
+        self.log("Median angle error", angle_error_vector.median())
         self.log("RMS error", RMS_error(normals, normals_gt, normals_mask))
-        self.log("RMS log error", RMS_log_error(normals, normals_gt, normals_mask))
-        self.log("L1 relative error", L1_relative_error(normals, normals_gt, normals_mask))
-        self.log("Ang err < 11.25", delta_error(normals, normals_gt, 11.25, normals_mask))
-        self.log("Ang err < 22.5", delta_error(normals, normals_gt, 22.5, normals_mask))
-        self.log("Ang err < 30", delta_error(normals, normals_gt, 30, normals_mask))
-        self.log("Ang err < 40", delta_error(normals, normals_gt, 45, normals_mask))
+        self.log("Ang err < 5", mean_of_values_under_threshold(angle_error_vector, 5))
+        self.log("Ang err < 7.5", mean_of_values_under_threshold(angle_error_vector, 7.5))
+        self.log("Ang err < 11.25", mean_of_values_under_threshold(angle_error_vector, 11.25))
+        self.log("Ang err < 22.5", mean_of_values_under_threshold(angle_error_vector, 22.5))
+        self.log("Ang err < 30", mean_of_values_under_threshold(angle_error_vector, 30))
+        self.log("Ang err < 45", mean_of_values_under_threshold(angle_error_vector, 45))
