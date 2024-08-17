@@ -140,8 +140,8 @@ intrinsics = Manydepth_Intrinsics()
 manydepth = Manydepth_module(
 Manydepth_Intrinsics(), Path("/home/eit/lizzy/manydepth_weights_MR/KITTI_MR")
 )
-TFTN = TFTN_module(camera_intrinsics=intrinsics)
-PlaneFitter = PlaneFitter_module(camera_intrinsics=intrinsics)
+TFTN = TFTN_module(camera_intrinsics=intrinsics, kernel_size=7, kernel_type="prewitt")
+PlaneFitter = PlaneFitter_module(camera_intrinsics=intrinsics, kernel_size=11)
 ALUN = ALUN_module()
 
 
