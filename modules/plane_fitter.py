@@ -1,7 +1,6 @@
 import lightning as L
 import torch
 from torch import Tensor
-from torch.nn.functional import unfold, normalize
 from jaxtyping import Float, jaxtyped
 from typeguard import typechecked as typechecker
 import einops as e

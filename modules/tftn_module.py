@@ -1,7 +1,6 @@
 import lightning as L
 import torch
-from torch import Tensor, conv2d
-from torch.nn.functional import unfold
+from torch import Tensor
 
 from metrics.normal_metrics import RMS_error, mean_of_values_under_threshold, sn_angle_error
 from utils.camera_intrinsics import CameraIntrinsics

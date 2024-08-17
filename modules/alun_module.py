@@ -1,10 +1,7 @@
 import lightning as L
 import torch
 from torchvision import transforms
-from torchvision.transforms.functional import resize
-from torchvision.transforms import InterpolationMode
 from torch import Tensor
-from pathlib import Path
 import einops as e
 from jaxtyping import Float, jaxtyped
 from typeguard import typechecked as typechecker
@@ -38,7 +35,6 @@ class ALUN_module(L.LightningModule):
         self, img: Float[Tensor, "hin win c=3"]
     ) -> Float[Tensor, "hout wout c=3"]:
         img = e.rearrange(img, "h w c -> c h w")
-        # img = resize(img, [480, 640], interpolation=InterpolationMode.BICUBIC)
         img = self.normalize(img)
         img = img.unsqueeze(0).cuda()
 
