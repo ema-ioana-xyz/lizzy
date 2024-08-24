@@ -23,8 +23,8 @@ class NyuDataSet(CustomDataset):
             A dict containing an image and its associated depth, normals, 
             depth and normals masks, and intrinsics matrix.
         """
-        filename = self.image_paths[index]
-        file_path = Path("../lizzy_data/test_data") / filename
+        filename = f"{self.image_paths[index]}.mat"
+        file_path = Path("/home/eit/mnt/ema-ioana-tit/geonet_nyu/GeoNet/test_data") / filename
 
         # Load the matlab image as a dictionary
         matlab_data = scipy.io.loadmat(file_path)
@@ -33,14 +33,14 @@ class NyuDataSet(CustomDataset):
         # NYU depth & mask data shape is [Height: 481 X Width: 641]
 
         # Extract the data from the MATLAB file
-        # and crop extra border pixel
-        image = matlab_data['img'][0:-1, 0:-1]
-        depth = matlab_data['depth'][0:-1, 0:-1]
-        normals = matlab_data['norm'][0:-1, 0:-1]
-        depth_mask = matlab_data['mask'][0:-1, 0:-1]
+        # ~~and crop extra border pixel~~
+        image = matlab_data['img']
+        depth = e.rearrange(matlab_data['depth'], "w h -> h w")
+        normals = e.rearrange(matlab_data['norm'], "c w h -> h w c")
+        depth_mask = e.rearrange(matlab_data['mask'], "w h -> h w")
 
-        image += np.array([122.175, 116.169, 103.508]) * 2
-        image = image.astype('uint8')
+        # image += np.array([122.175, 116.169, 103.508]) * 2
+        # image = image.astype('uint8')
 
         # Return data as Tensors following Pytorch dimension order conventions.
         # Images are [Channel X Height X Width] in Torchvision

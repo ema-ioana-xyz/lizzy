@@ -101,8 +101,6 @@ def L1_relative_error(
     """
     validate_input_tensors(content_name, prediction, target, mask)
 
-    target = torch.clamp(target, min=1e-6)
-
     error = l1_loss(prediction, target, reduction="none") / target
     valid_pixel_count = error.numel()
 
@@ -130,10 +128,6 @@ def log10_error(
     """
     validate_input_tensors(content_name, prediction, target, mask)
 
-    eps = 1e-6
-    prediction = torch.clamp(prediction, min=eps)
-    target = torch.clamp(target, min=eps)
-
     prediction = torch.log10(prediction)
     target = torch.log10(target)
 
@@ -146,7 +140,7 @@ def log10_error(
     return error.sum() / valid_pixel_count
 
 
-def normals_angle_difference(
+def sn_angle_error(
     prediction: Tensor,
     target: Tensor,
     mask: Optional[Tensor] = None,
