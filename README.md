@@ -3,8 +3,10 @@ There are two parts to this project:
 
 ## 1. Evaluating three different _surface normal predictors_: [Three Filters To Normal](https://github.com/ruirangerfan/Three-Filters-to-Normal), [Surface Normal Uncertainty](https://github.com/baegwangbin/surface_normal_uncertainty), and a module I made inspired by the depth-to-normal refinement in [GeoNet](https://github.com/xjqi/GeoNet)
 
-### And here is my full paper for more details: [thesis.pdf](https://github.com/user-attachments/files/16619325/thesis.pdf)
-The paper is mostly finished, save for the introduction; I will update it once the final version is done.
+### And here is my full paper for more details: [Lizzy.pdf](https://github.com/user-attachments/files/16969737/Lizzy.pdf)
+
+~~The paper is mostly finished, save for the introduction; I will update it once the final version is done.~~
+The final version of the paper was uploaded (2024-09-11)
 
 The error metrics I used are the following:
 
